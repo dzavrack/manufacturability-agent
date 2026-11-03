@@ -1,5 +1,7 @@
 # Manufacturability Agent
 
+[![Tests](https://github.com/dzavrack/manufacturability-agent/actions/workflows/tests.yml/badge.svg)](https://github.com/dzavrack/manufacturability-agent/actions/workflows/tests.yml)
+
 **An AI agent that reviews 3D-printable parts using real geometry analysis rather than guesswork.**
 
 You give it an STL and a question like *"Can I print this on a Prusa MK4 with a 0.4 mm nozzle?"*. Claude decides which checks to run and with what parameters, the Python code does the measurements, and Claude writes a verdict that cites the measured numbers.
@@ -65,6 +67,16 @@ The first version of the wall-thickness check reported **22% of the surface as d
 
 The fix uses the hit geometry itself. A genuine exit through the far wall hits a face whose outward normal is roughly *parallel* to the ray, while a grazing hit is closer to *perpendicular*. Discarding hits with alignment ≤ 0.7 (about 45° off) **dropped the false-thin rate from 22% to under 1%** and moved the measured minimum from 0.001 mm to a plausible 0.34 mm.
 
+## Tests
+
+`test_geometry.py` checks each function against shapes whose answers are known by hand: a 20 mm cube, a 0.4 mm plate, a 1-inch cube exported as an STL, and a mesh with a hole in it. GitHub Actions runs the tests, plus every check on the sample parts, on each push.
+
+## Known limitations
+
+- **Faces resting on the build plate are counted as overhangs.** The overhang check flags every downward-facing surface, including the bottom face that sits on the bed. That inflates the number for flat-bottomed parts; on a cube it reports 1/6 of the surface. The fix is to ignore faces lying within a layer height of the part's lowest point. It's the next thing on the list.
+- **Wall thickness is sampled, not exhaustive.** About 2,000 random surface points are checked, so a very small thin feature can be missed. The sample count is a parameter.
+- **Only FDM rules so far.** The thresholds (0.8 mm walls, 45° overhangs) are FDM rules of thumb and can be changed per call.
+
 ## Run it
 
 ```bash
@@ -75,6 +87,7 @@ cp .env.example .env        # then put your Anthropic API key in .env
 python agent.py parts/thread_saver_25_20.stl                  # agent review
 python agent.py parts/thread_saver_375_16.stl --report r.json # also save the audit log
 python run_checks.py                                          # raw checks only, no AI
+pytest                                                        # unit tests
 python inspect_part.py                                        # mesh stats
 ```
 
@@ -88,11 +101,13 @@ checks.py              deterministic geometry checks (no AI)
 run_checks.py          run every check on the sample parts and print raw JSON
 inspect_part.py        basic mesh stats (vertices, volume, watertightness)
 diagnose_thickness.py  the investigation behind the grazing-hit filter
+test_geometry.py       unit tests on shapes with known answers
 parts/                 sample STL files
 ```
 
 ## Possible next steps
 
+- Exclude bed-contact faces from the overhang check (see Known limitations)
 - Material-aware rules (PETG and ABS bridging and overhang limits differ from PLA)
 - Choosing an orientation automatically by trading support area against print height
 - Checks for CNC machining (tool access, internal corner radii), not only additive
